@@ -14,6 +14,6 @@
   ],
   "integration_type": "device",
   "iot_class": "local_push",
-  "version": "3.1.0-local.3",
+  "version": "3.1.0-local.4",
   "config_flow": true
 }

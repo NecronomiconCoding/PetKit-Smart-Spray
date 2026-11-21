@@ -12,6 +12,7 @@ from homeassistant.core import callback
 from .const import CONF_IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DOMAIN, MAX_IDLE_TIMEOUT
 from .pairing import PairingError, async_pair_locally
 from .petkit_device import PetkitK3Device
+from .probe import async_register_probe
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class PetkitK3ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return {address: text for _rssi, address, text in found}
 
     async def async_step_user(self, user_input=None):
+        async_register_probe(self.hass)  # diagnostics are available as soon as setup is opened
         errors: dict[str, str] = {}
         detail = ""
         candidates = self._candidates()
