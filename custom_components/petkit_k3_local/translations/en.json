@@ -1,7 +1,7 @@
 {
   "config": {
     "step": {
-      "user": {
+      "local": {
         "title": "Pair a Pura Air locally",
         "description": "Sets up the sprayer over Bluetooth without a Petkit account: reads its id, derives the key it accepts and checks it by switching the sprayer's light on briefly.\n\nNearby Petkit devices found: {count}. Keep the sprayer within a few metres of a Bluetooth adapter or proxy.\n\n{detail}",
         "data": {
@@ -9,11 +9,31 @@
           "manual_address": "Or enter the Bluetooth address (AA:BB:CC:DD:EE:FF)",
           "name": "Name"
         }
+      },
+      "user": {
+        "title": "Set up a Pura Air",
+        "description": "Choose how to get the sprayer's Bluetooth key.",
+        "menu_options": {
+          "local": "Pair locally (no Petkit account)",
+          "account": "Petkit account (one-time login)"
+        }
+      },
+      "account": {
+        "title": "Petkit account",
+        "description": "Logs in once to download the sprayer's key, then works locally over Bluetooth. The password is not stored.\\n\\nCountry is your account's two-letter code (AE for the UAE uses Petkit's Asia server).\\n\\n{detail}",
+        "data": {
+          "username": "E-mail",
+          "password": "Password",
+          "country": "Country code",
+          "timezone": "Time zone"
+        }
       }
     },
     "error": {
       "pair_failed": "Pairing failed. See the detail above and the log.",
-      "invalid_address": "That is not a valid Bluetooth address."
+      "invalid_address": "That is not a valid Bluetooth address.",
+      "cannot_connect": "Login failed. See the reason above.",
+      "no_devices": "No Pura Air found on this Petkit account."
     },
     "abort": {
       "already_configured": "This sprayer is already set up."

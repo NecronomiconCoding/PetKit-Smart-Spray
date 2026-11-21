@@ -10,10 +10,12 @@
     "@NecronomiconCoding"
   ],
   "requirements": [
-    "bleak-retry-connector"
+    "bleak-retry-connector",
+    "aiohttp",
+    "pypetkitapi==1.31.1"
   ],
   "integration_type": "device",
   "iot_class": "local_push",
-  "version": "3.1.0-local.4",
+  "version": "3.1.0-local.5",
   "config_flow": true
 }
