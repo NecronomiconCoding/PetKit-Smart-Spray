@@ -32,6 +32,8 @@ FRAME_TYPE_SEND = 1
 CMD_GET_DEVICE_INFO = 213  # 0xD5
 CMD_DEVICE_INIT = 73  # 0x49
 CMD_AUTH_VERIFY = 86  # 0x56
+CMD_CONTROL = 220  # 0xDC
+LIGHT_PAYLOAD = bytes([0x02, 0x03])  # same payload as LIGHT_CMD
 
 REPLY_TIMEOUT = 6.0
 STEP_DELAY = 0.3
@@ -73,71 +75,99 @@ def secret_to_payload(secret_hex: str) -> bytes:
     return raw.rjust(8, b"\x00")[-8:]
 
 
-async def async_pair_locally(hass: HomeAssistant, address: str, name: str) -> str:
-    """Write a fresh key to the device and verify it. Returns the secret (hex, 6 bytes)."""
-    ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
-    if ble_device is None:
-        raise PairingError(f"{address} is not in Bluetooth range (or not connectable)")
+class _Session:
+    """One BLE connection: request/reply over AAA2/AAA1, with a transcript for diagnostics."""
 
-    try:
-        client = await establish_connection(
-            BleakClientWithServiceCache, ble_device, name, max_attempts=CONNECT_MAX_ATTEMPTS
+    def __init__(self, hass: HomeAssistant, address: str, name: str, transcript: list[str]) -> None:
+        self._hass = hass
+        self._address = address
+        self._name = name
+        self._buffer = bytearray()
+        self._replies: asyncio.Queue = asyncio.Queue()
+        self._client = None
+        self.transcript = transcript
+
+    async def __aenter__(self) -> "_Session":
+        ble_device = bluetooth.async_ble_device_from_address(self._hass, self._address, connectable=True)
+        if ble_device is None:
+            raise PairingError(f"{self._address} is not in Bluetooth range (or not connectable)")
+        self._client = await establish_connection(
+            BleakClientWithServiceCache, ble_device, self._name, max_attempts=CONNECT_MAX_ATTEMPTS
         )
-    except (BleakError, asyncio.TimeoutError, EOFError, BrokenPipeError) as err:
-        raise PairingError(f"could not connect: {err!r}") from err
+        await self._client.start_notify(NOTIFY_UUID, self._on_notify)
+        return self
 
-    buffer = bytearray()
-    replies: asyncio.Queue = asyncio.Queue()
-
-    def _on_notify(_sender, data: bytearray) -> None:
-        _LOGGER.debug("%s <- %s", address, bytes(data).hex())
-        buffer.extend(data)
-        for frame in parse_frames(buffer):
-            replies.put_nowait(frame)
-
-    async def _request(cmd: int, seq: int, data: bytes = b"") -> bytes:
-        frame = build_frame(cmd, seq, data)
-        _LOGGER.debug("%s -> %s", address, frame.hex())
-        await client.write_gatt_char(CHAR_UUID, frame)
-        deadline = hass.loop.time() + REPLY_TIMEOUT
-        while True:
-            remaining = deadline - hass.loop.time()
-            if remaining <= 0:
-                raise PairingError(f"no reply to command {cmd}")
-            try:
-                r_cmd, _r_type, _r_seq, payload = await asyncio.wait_for(replies.get(), remaining)
-            except asyncio.TimeoutError as err:
-                raise PairingError(f"no reply to command {cmd}") from err
-            if r_cmd == cmd:
-                return payload
-
-    try:
-        await client.start_notify(NOTIFY_UUID, _on_notify)
-
-        info = await _request(CMD_GET_DEVICE_INFO, 0)
-        device_id = bytes(info[:8]).ljust(8, b"\x00")
-        if not any(device_id):
-            # Never bound: give it an id derived from its address so it counts as set up.
-            device_id = bytes.fromhex(address.replace(":", "")).rjust(8, b"\x00")
-        _LOGGER.info("%s: device info %s", address, info.hex())
-
-        secret = b"\x00\x00" + _secrets.token_bytes(6)
-        await asyncio.sleep(STEP_DELAY)
-        resp = await _request(CMD_DEVICE_INIT, 1, device_id + secret)
-        if not resp or resp[0] != 1:
-            raise PairingError(f"device refused the new key (reply {resp.hex() or 'empty'})")
-
-        await asyncio.sleep(STEP_DELAY)
-        resp = await _request(CMD_AUTH_VERIFY, 2, secret)
-        if not resp or resp[0] != 1:
-            raise PairingError(f"new key was not accepted on verify (reply {resp.hex() or 'empty'})")
-
-        _LOGGER.info("%s: paired locally", address)
-        return secret[2:].hex()
-    except (BleakError, asyncio.TimeoutError, EOFError, BrokenPipeError) as err:
-        raise PairingError(f"Bluetooth error: {err!r}") from err
-    finally:
+    async def __aexit__(self, *_exc) -> None:
         try:
-            await client.disconnect()
+            await self._client.disconnect()
         except (BleakError, asyncio.TimeoutError, EOFError, BrokenPipeError):
             pass
+
+    def _on_notify(self, _sender, data: bytearray) -> None:
+        self._buffer.extend(data)
+        for frame in parse_frames(self._buffer):
+            self._replies.put_nowait(frame)
+
+    async def request(self, label: str, cmd: int, seq: int, data: bytes = b"", log_data: bool = True) -> bytes | None:
+        """Send one command; returns the reply payload, or None when the device stays silent."""
+        await self._client.write_gatt_char(CHAR_UUID, build_frame(cmd, seq, data))
+        deadline = self._hass.loop.time() + REPLY_TIMEOUT
+        while True:
+            remaining = deadline - self._hass.loop.time()
+            if remaining <= 0:
+                self.transcript.append(f"{label}: no reply")
+                return None
+            try:
+                r_cmd, _r_type, _r_seq, payload = await asyncio.wait_for(self._replies.get(), remaining)
+            except asyncio.TimeoutError:
+                self.transcript.append(f"{label}: no reply")
+                return None
+            if r_cmd == cmd:
+                self.transcript.append(f"{label}: {payload.hex() if log_data else f'{len(payload)} bytes'}")
+                return payload
+
+
+async def async_pair_locally(hass: HomeAssistant, address: str, name: str) -> str:
+    """Write a fresh key to the device and prove it works. Returns the secret (hex, 6 bytes).
+
+    The K3's reply codes are not documented, so success is established by behaviour:
+    the freshly written key must be treated differently from a wrong one.
+    """
+    transcript: list[str] = []
+    secret = b"\x00\x00" + _secrets.token_bytes(6)
+    wrong = secret[:-1] + bytes([secret[-1] ^ 0xFF])
+    try:
+        async with _Session(hass, address, name, transcript) as link:
+            info = await link.request("info", CMD_GET_DEVICE_INFO, 0)
+            if info is None:
+                raise PairingError("the device did not answer the info command")
+            device_id = bytes(info[:8]).ljust(8, b"\x00")
+            if not any(device_id):
+                # Never bound: give it an id derived from its address so it counts as set up.
+                device_id = bytes.fromhex(address.replace(":", "")).rjust(8, b"\x00")
+            await asyncio.sleep(STEP_DELAY)
+            init = await link.request("set-key", CMD_DEVICE_INIT, 1, device_id + secret)
+            await asyncio.sleep(STEP_DELAY)
+            verify_ok = await link.request("verify(new key)", CMD_AUTH_VERIFY, 2, secret)
+            await asyncio.sleep(STEP_DELAY)
+            light_ok = await link.request("light(after new key)", CMD_CONTROL, 3, LIGHT_PAYLOAD)
+
+        await asyncio.sleep(1.5)
+        async with _Session(hass, address, name, transcript) as link:
+            await link.request("info#2", CMD_GET_DEVICE_INFO, 0, log_data=False)
+            await asyncio.sleep(STEP_DELAY)
+            verify_bad = await link.request("verify(wrong key)", CMD_AUTH_VERIFY, 1, wrong)
+            await asyncio.sleep(STEP_DELAY)
+            light_bad = await link.request("light(after wrong key)", CMD_CONTROL, 2, LIGHT_PAYLOAD)
+    except PairingError as err:
+        raise PairingError(f"{err} [{'; '.join(transcript)}]") from err
+    except (BleakError, asyncio.TimeoutError, EOFError, BrokenPipeError) as err:
+        raise PairingError(f"Bluetooth error: {err!r} [{'; '.join(transcript)}]") from err
+
+    summary = "; ".join(transcript)
+    _LOGGER.warning("%s local pairing transcript: %s", address, summary)
+    if init is None or verify_ok is None:
+        raise PairingError(f"the device stopped answering [{summary}]")
+    if verify_ok == verify_bad and light_ok == light_bad:
+        raise PairingError(f"the device treats the new key like a wrong one [{summary}]")
+    return secret[2:].hex()
