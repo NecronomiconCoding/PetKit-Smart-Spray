@@ -40,23 +40,27 @@ class PetkitK3Light(PetkitK3Entity, LightEntity):
         if self.is_on:
             return
         await self._async_toggle()
-        self._set_light(True)
-        # Устройство само гасит подсветку — синхронизируем состояние в HA
-        self._cancel_auto_off = async_call_later(
-            self.hass, LIGHT_ON_DURATION, self._async_auto_off
-        )
+        await self._settle(True)
 
     async def async_turn_off(self, **kwargs):
         if not self.is_on:
             return
-        # Команда подсветки работает как переключатель
+        # The light command is a toggle
         await self._async_toggle()
-        self._set_light(False)
+        await self._settle(False)
+
+    async def _settle(self, wanted: bool) -> None:
+        """Show the new state at once; status reports correct it, and while the link is
+        down (no reports) the light is assumed off after LIGHT_ON_DURATION."""
+        self._set_light(wanted)
+        if wanted:
+            self._cancel_auto_off = async_call_later(self.hass, LIGHT_ON_DURATION, self._async_auto_off)
 
     @callback
     def _async_auto_off(self, _now) -> None:
         self._cancel_auto_off = None
-        self._set_light(False)
+        if not self._controller.is_connected:
+            self._set_light(False)
 
     @callback
     def _set_light(self, state: bool) -> None:

@@ -19,7 +19,7 @@ SPRAY_CMD = "fafcfddc010a02000103fb"
 LIGHT_CMD = "fafcfddc010b02000203fb"
 
 RESPONSE_OK = "00"
-RESPONSE_DELAY = 0.5  # пауза между записью команды и чтением ответа, сек
+STATUS_CMD = 0xE6  # status report: [?, level, spraying, light, ...]
 
 # Энергосбережение: соединение открывается только для команды
 # и закрывается после простоя (0 — сразу после команды)
@@ -27,4 +27,4 @@ DEFAULT_IDLE_TIMEOUT = 30
 MAX_IDLE_TIMEOUT = 600
 CONNECT_MAX_ATTEMPTS = 3
 
-LIGHT_ON_DURATION = 10  # подсветка сама гаснет через 10 секунд
+LIGHT_ON_DURATION = 20  # fallback only: the light switches itself off after ~12-15 s

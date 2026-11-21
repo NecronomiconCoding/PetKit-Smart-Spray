@@ -29,6 +29,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 
 from .const import (
+    STATUS_CMD,
     AUTH_CMD_PREFIX,
     AUTH_CMD_SUFFIX,
     CHAR_UUID,
@@ -36,7 +37,6 @@ from .const import (
     CONNECT_MAX_ATTEMPTS,
     DEFAULT_IDLE_TIMEOUT,
     INIT_CMD,
-    RESPONSE_DELAY,
     RESPONSE_OK,
 )
 
@@ -64,6 +64,8 @@ class PetkitK3Device:
         self.secret = secret
         self.idle_timeout = idle_timeout
         self.light_on = False
+        self.spraying = False
+        self.status_at = 0.0  # loop time of the last status report
 
         self._client: BleakClientWithServiceCache | None = None
         self._authenticated = False
@@ -155,18 +157,19 @@ class PetkitK3Device:
         self._async_notify()
 
     async def _write(self, client: BleakClientWithServiceCache, command_hex: str) -> str | None:
-        """Отправить команду и прочитать ответ. Ошибки записи пробрасываются."""
-        await client.write_gatt_char(CHAR_UUID, bytes.fromhex(command_hex))
-        _LOGGER.debug("%s: команда %s отправлена", self.mac, command_hex)
-        await asyncio.sleep(RESPONSE_DELAY)
-        try:
-            response = await client.read_gatt_char(CHAR_UUID)
-        except BLE_EXCEPTIONS as err:
-            _LOGGER.debug("%s: ответ не получен: %s", self.mac, err)
+        """Send a command and wait for the device's reply to it on the notify characteristic.
+
+        Returns RESPONSE_OK when the device acknowledged it (payload 01), the reply
+        payload as hex otherwise, or None when it stayed silent."""
+        frame = bytes.fromhex(command_hex)
+        await client.write_gatt_char(CHAR_UUID, frame)
+        _LOGGER.debug("%s -> %s", self.mac, command_hex)
+        reply = await self._await_reply(frame[3], timeout=3.0)
+        if reply is None:
             return None
-        resp_hex = response.hex()
-        _LOGGER.debug("%s: ответ %s", self.mac, resp_hex)
-        return resp_hex
+        if frame[3] == 0xD5 or (reply and reply[0] == 1):
+            return RESPONSE_OK
+        return reply.hex()
 
     async def _ensure_session(self) -> BleakClientWithServiceCache:
         """Подключиться (если нужно) и пройти аутентификацию один раз на соединение."""
@@ -198,7 +201,6 @@ class PetkitK3Device:
 
         if not self._authenticated:
             await self._write(client, INIT_CMD)
-            await self._await_reply(0xD5)
             _LOGGER.debug("%s -> auth (%d-byte key)", self.mac, len(bytes.fromhex(self.secret)))
             await client.write_gatt_char(CHAR_UUID, bytes.fromhex(AUTH_CMD_PREFIX + self.secret + AUTH_CMD_SUFFIX))
             # The device answers CMD 86 on the notify characteristic: 01 = key accepted.
@@ -218,6 +220,15 @@ class PetkitK3Device:
         _LOGGER.debug("%s <- %s", self.mac, bytes(data).hex())
         self._rx.extend(data)
         for frame in parse_frames(self._rx):
+            cmd, _t, _s, payload = frame
+            if cmd == STATUS_CMD and len(payload) >= 4:
+                # Status report (~every 3 s while connected): [?, level, spraying, light, ...]
+                self.status_at = self.hass.loop.time()
+                spraying, light = payload[2] == 1, payload[3] == 1
+                if (spraying, light) != (self.spraying, self.light_on):
+                    self.spraying, self.light_on = spraying, light
+                    self._async_notify()
+                continue
             self._replies.put_nowait(frame)
 
     async def _await_reply(self, cmd: int, timeout: float = 4.0) -> bytes | None:
