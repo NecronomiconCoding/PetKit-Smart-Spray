@@ -32,6 +32,7 @@ from .const import (
     AUTH_CMD_PREFIX,
     AUTH_CMD_SUFFIX,
     CHAR_UUID,
+    NOTIFY_UUID,
     CONNECT_MAX_ATTEMPTS,
     DEFAULT_IDLE_TIMEOUT,
     INIT_CMD,
@@ -71,6 +72,8 @@ class PetkitK3Device:
         self._lock = asyncio.Lock()  # команды и подключение выполняются последовательно
         self._disconnect_timer: asyncio.TimerHandle | None = None
         self._listeners: set[CALLBACK_TYPE] = set()
+        self._rx = bytearray()
+        self._replies: asyncio.Queue = asyncio.Queue()
         self._unsubs: list[CALLBACK_TYPE] = []
 
     @staticmethod
@@ -188,19 +191,43 @@ class PetkitK3Device:
                 ) or ble_device,
             )
             _LOGGER.debug("Установлено подключение к %s", self.mac)
+            self._rx.clear()
+            self._replies = asyncio.Queue()
+            await client.start_notify(NOTIFY_UUID, self._on_notify)
             self._async_notify()
 
         if not self._authenticated:
             await self._write(client, INIT_CMD)
-            auth_resp = await self._write(
-                client, AUTH_CMD_PREFIX + self.secret + AUTH_CMD_SUFFIX
-            )
-            if auth_resp != RESPONSE_OK:
+            await self._await_reply(0xD5)
+            await client.write_gatt_char(CHAR_UUID, bytes.fromhex(AUTH_CMD_PREFIX + self.secret + AUTH_CMD_SUFFIX))
+            # The device answers CMD 86 on the notify characteristic: 01 = key accepted.
+            # (Reading the write characteristic always returns 00, so it proves nothing.)
+            reply = await self._await_reply(0x56)
+            if reply is None or not reply or reply[0] != 1:
                 raise PetkitK3Error(
-                    f"Неверный ответ аутентификации от {self.mac}: {auth_resp}"
+                    f"{self.name}: the sprayer rejected the stored key "
+                    f"(reply {reply.hex() if reply else 'none'}). If it was re-paired in the "
+                    "Petkit app, remove this integration entry and add it again."
                 )
             self._authenticated = True
         return client
+
+    def _on_notify(self, _sender, data: bytearray) -> None:
+        from .pairing import parse_frames
+        self._rx.extend(data)
+        for frame in parse_frames(self._rx):
+            self._replies.put_nowait(frame)
+
+    async def _await_reply(self, cmd: int, timeout: float = 4.0) -> bytes | None:
+        deadline = self.hass.loop.time() + timeout
+        while (remaining := deadline - self.hass.loop.time()) > 0:
+            try:
+                r_cmd, _t, _s, payload = await asyncio.wait_for(self._replies.get(), remaining)
+            except asyncio.TimeoutError:
+                return None
+            if r_cmd == cmd:
+                return payload
+        return None
 
     async def _disconnect(self) -> None:
         self._cancel_disconnect_timer()
