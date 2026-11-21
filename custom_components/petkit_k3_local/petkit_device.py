@@ -66,6 +66,7 @@ class PetkitK3Device:
         self.light_on = False
         self.spraying = False
         self.status_at = 0.0  # loop time of the last status report
+        self._seq = 0
 
         self._client: BleakClientWithServiceCache | None = None
         self._authenticated = False
@@ -161,9 +162,12 @@ class PetkitK3Device:
 
         Returns RESPONSE_OK when the device acknowledged it (payload 01), the reply
         payload as hex otherwise, or None when it stayed silent."""
-        frame = bytes.fromhex(command_hex)
-        await client.write_gatt_char(CHAR_UUID, frame)
-        _LOGGER.debug("%s -> %s", self.mac, command_hex)
+        frame = bytearray.fromhex(command_hex)
+        # Fresh sequence number per command: the device ignores a repeated one.
+        self._seq = (self._seq + 1) & 0xFF
+        frame[5] = self._seq
+        await client.write_gatt_char(CHAR_UUID, bytes(frame))
+        _LOGGER.debug("%s -> %s", self.mac, frame.hex())
         reply = await self._await_reply(frame[3], timeout=3.0)
         if reply is None:
             return None
@@ -196,6 +200,7 @@ class PetkitK3Device:
             _LOGGER.debug("Установлено подключение к %s", self.mac)
             self._rx.clear()
             self._replies = asyncio.Queue()
+            self._seq = 0
             await client.start_notify(NOTIFY_UUID, self._on_notify)
             self._async_notify()
 
