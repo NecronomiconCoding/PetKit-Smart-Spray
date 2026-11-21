@@ -6,13 +6,11 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DOMAIN, PLATFORMS
 from .petkit_device import PetkitK3Device
-from .probe import async_register_probe
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    async_register_probe(hass)
     idle_timeout = entry.options.get(CONF_IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT)
 
     devices: dict[str, PetkitK3Device] = {}
