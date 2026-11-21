@@ -199,6 +199,7 @@ class PetkitK3Device:
         if not self._authenticated:
             await self._write(client, INIT_CMD)
             await self._await_reply(0xD5)
+            _LOGGER.debug("%s -> auth (%d-byte key)", self.mac, len(bytes.fromhex(self.secret)))
             await client.write_gatt_char(CHAR_UUID, bytes.fromhex(AUTH_CMD_PREFIX + self.secret + AUTH_CMD_SUFFIX))
             # The device answers CMD 86 on the notify characteristic: 01 = key accepted.
             # (Reading the write characteristic always returns 00, so it proves nothing.)
@@ -214,6 +215,7 @@ class PetkitK3Device:
 
     def _on_notify(self, _sender, data: bytearray) -> None:
         from .pairing import parse_frames
+        _LOGGER.debug("%s <- %s", self.mac, bytes(data).hex())
         self._rx.extend(data)
         for frame in parse_frames(self._rx):
             self._replies.put_nowait(frame)
