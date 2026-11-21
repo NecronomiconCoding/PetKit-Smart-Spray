@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Pair a Pura Air locally",
-        "description": "Pairs the sprayer over Bluetooth by writing a new key to it. No Petkit account is used. After this the Petkit app can no longer control the sprayer until it is reset and paired there again.\n\nNearby Petkit devices found: {count}. Keep the sprayer within a few metres of a Bluetooth adapter or proxy.\n\n{detail}",
+        "description": "Sets up the sprayer over Bluetooth without a Petkit account: reads its id, derives the key it accepts and checks it by switching the sprayer's light on briefly.\n\nNearby Petkit devices found: {count}. Keep the sprayer within a few metres of a Bluetooth adapter or proxy.\n\n{detail}",
         "data": {
           "address": "Device",
           "manual_address": "Or enter the Bluetooth address (AA:BB:CC:DD:EE:FF)",

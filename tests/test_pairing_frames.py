@@ -37,6 +37,12 @@ def test_parser_handles_split_noise_and_multiple_frames():
     assert frames == [(0xD5, 2, 0, bytes.fromhex("0102030405060708")), (0x49, 2, 1, b"\x01")]
     assert buf == bytearray()
 
+def test_key_derivation_matches_the_reference_rule():
+    assert pairing.derive_secret(bytes(6)).hex() == "000000000d25"          # never-registered device
+    assert pairing.derive_secret(bytes.fromhex("000017d5a3c1")).hex() == "c1a3d5170d25"
+    assert pairing.derive_secret(bytes.fromhex("0102030405ff")).hex() == "ff0504030201"
+    assert pairing.secret_to_payload("000000000d25").hex() == "0000000000000d25"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"): fn(); print("ok", name)
