@@ -230,7 +230,7 @@ class PetkitK3Device:
     def _on_idle_timeout(self) -> None:
         self._disconnect_timer = None
         self.hass.async_create_background_task(
-            self._async_idle_disconnect(), f"petkit_k3 idle disconnect {self.mac}"
+            self._async_idle_disconnect(), f"petkit_k3_local idle disconnect {self.mac}"
         )
 
     async def _async_idle_disconnect(self) -> None:

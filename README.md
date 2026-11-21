@@ -1,3 +1,20 @@
+# PetKit Pura Air (local) — fork
+
+This fork of [sergey-akhmineev/PetKit-Smart-Spray](https://github.com/sergey-akhmineev/PetKit-Smart-Spray)
+pairs the Pura Air (K3) **locally over Bluetooth, with no Petkit account**:
+
+- setup connects to the sprayer, reads its id (command 213), writes a fresh key
+  (command 73) and verifies it (command 86), the same way Petkit fountains are paired
+  locally; the key is stored in the config entry;
+- the Petkit cloud login and the `pypetkitapi` dependency are removed;
+- the integration domain is `petkit_k3_local`, so it can sit next to the original.
+
+After local pairing the Petkit app can no longer control the sprayer until it is
+reset and paired in the app again. Works through ESPHome Bluetooth proxies.
+Run `python3 tests/test_pairing_frames.py` for the frame-format checks.
+
+---
+
 # Petkit Smart Spray Bluetooth Integration
 
 <div align="center">

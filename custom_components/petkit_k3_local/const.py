@@ -1,19 +1,13 @@
 # const.py
-DOMAIN = "petkit_k3"
+DOMAIN = "petkit_k3_local"
 PLATFORMS = ["light", "button"]
 
-DEFAULT_REGION = "FR"
-DEFAULT_TIMEZONE = "Asia/Yekaterinburg"
-
-CONF_USERNAME = "username"
-CONF_PASSWORD = "password"
-CONF_REGION = "region"
-CONF_TIMEZONE = "timezone"
 CONF_DEVICES = "devices"
 CONF_IDLE_TIMEOUT = "idle_timeout"
 
 # Bluetooth-константы
 CHAR_UUID = "0000aaa2-0000-1000-8000-00805f9b34fb"
+NOTIFY_UUID = "0000aaa1-0000-1000-8000-00805f9b34fb"
 INIT_CMD = "fafcfdd501000000fb"
 
 # Команды аутентификации – вставляем секрет между префиксом и суффиксом

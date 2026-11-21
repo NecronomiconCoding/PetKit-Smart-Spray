@@ -1,15 +1,22 @@
 {
-  "name": "PetKit Smart Spray",
+  "name": "PetKit Pura Air (local)",
   "render_readme": true,
-  "domain": "petkit_k3",
-  "documentation": "https://github.com/sergey-akhmineev/PetKit-Smart-Spray/blob/main/README.md",
-  "issue_tracker": "https://github.com/sergey-akhmineev/PetKit-Smart-Spray/issues",
-  "codeowners": ["@sergey-akhmineev"],
+  "domain": "petkit_k3_local",
+  "documentation": "https://github.com/NecronomiconCoding/PetKit-Smart-Spray/blob/main/README.md",
+  "issue_tracker": "https://github.com/NecronomiconCoding/PetKit-Smart-Spray/issues",
+  "codeowners": [
+    "@NecronomiconCoding"
+  ],
   "homeassistant": "2024.11.1",
-  "description": "Интеграция для управления устройствами Petkit K3 через Bluetooth",
+  "description": "Local Bluetooth control of the Petkit Pura Air (K3) with local pairing, no Petkit account",
   "categories": [
     "integration"
   ],
-  "quality_scale": "platinum",
-  "keywords": ["pet", "kit", "bluetooth", "spray", "light"]
+  "keywords": [
+    "pet",
+    "kit",
+    "bluetooth",
+    "spray",
+    "light"
+  ]
 }

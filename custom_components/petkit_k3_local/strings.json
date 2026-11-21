@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pair a Pura Air locally",
+        "description": "Pairs the sprayer over Bluetooth by writing a new key to it. No Petkit account is used. After this the Petkit app can no longer control the sprayer until it is reset and paired there again.\n\nNearby Petkit devices found: {count}. Keep the sprayer within a few metres of a Bluetooth adapter or proxy.\n\n{detail}",
+        "data": {
+          "address": "Device",
+          "manual_address": "Or enter the Bluetooth address (AA:BB:CC:DD:EE:FF)",
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "pair_failed": "Pairing failed. See the detail above and the log.",
+      "invalid_address": "That is not a valid Bluetooth address."
+    },
+    "abort": {
+      "already_configured": "This sprayer is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bluetooth settings",
+        "description": "To save the battery, the integration connects only to send a command and disconnects after the idle time below. 0 disconnects immediately after each command.",
+        "data": {
+          "idle_timeout": "Disconnect after idle, seconds"
+        }
+      }
+    }
+  }
+}
